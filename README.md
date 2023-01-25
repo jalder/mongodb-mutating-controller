@@ -22,7 +22,7 @@ kubectl apply -f deploy/deployment.yaml
 
 3. Deploy a MongoDB resource and confirm the requiredDuringSchedulingIgnoredDuringExecution rules are in place
 
-You may consider deploying draining a node and review the pending pod states to check that they are unscheduable.
+You may consider draining a node and review the pending pod states to check that they are unscheduable.
 
 
 ### Room for Improvement
