@@ -24,6 +24,27 @@ kubectl apply -f deploy/deployment.yaml
 
 You may consider draining a node and review the pending pod states to check that they are unscheduable.
 
+Example sharded cluster manifest:
+```
+---
+apiVersion: mongodb.com/v1
+kind: MongoDB
+metadata:
+  name: affinity
+  namespace: mongodb
+spec:
+  configServerCount: 3
+  credentials: my-credentials
+  mongodsPerShardCount: 3
+  mongosCount: 2
+  opsManager:
+    configMapRef:
+      name: my-project
+  persistent: false
+  shardCount: 3
+  type: ShardedCluster
+  version: 4.4.11-ent
+```
 
 ### Room for Improvement
 
