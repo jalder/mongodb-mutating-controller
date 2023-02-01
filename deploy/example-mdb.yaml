@@ -1,0 +1,24 @@
+---
+apiVersion: mongodb.com/v1
+kind: MongoDB
+metadata:
+  name: affinity
+  namespace: mongodb
+spec:
+  configServerCount: 3
+  credentials: my-credentials
+  mongodsPerShardCount: 3
+  mongosCount: 2
+  opsManager:
+    configMapRef:
+      name: my-project
+  persistent: false
+  shardCount: 3
+  type: ShardedCluster
+  version: 4.4.11-ent
+  shardPodSpec:
+    podTemplate:
+      metadata:
+        labels:
+          sts-bond: "true"
+          sts-bond-with-prefix: shardzone

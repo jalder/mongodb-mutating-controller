@@ -1,0 +1,115 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sts-bond-mutator
+  namespace: mongodb
+spec:
+  commonName: sts-bond-mutator
+  dnsNames:
+  - sts-bond-mutator-svc.mongodb.svc.cluster.local
+  - sts-bond-mutator.mongodb.svc
+  duration: 2160h0m0s
+  issuerRef:
+    group: cert-manager.io
+    kind: Issuer
+    name: ca-issuer
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+  renewBefore: 360h0m0s
+  secretName: sts-bond-mutator
+  subject:
+    organizations:
+    - jalder
+    organizationalUnits:
+    - test
+  usages:
+  - server auth
+  - client auth
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sts-bond-mutator
+  namespace: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: sts-bond-mutator
+  template:
+    metadata:
+      labels:
+        name: sts-bond-mutator
+    spec:
+      containers:
+      - command: [ "/bin/bash", "-c", "--" ]
+        args:
+          - pip install flask && pip install jsonpatch && python /src/mutating_controller_sts_bonding.py
+        image: python:3
+        name: sts-bond-mutator
+        volumeMounts:
+          - name: mutator-script
+            mountPath: /src
+          - name: tls-certs
+            mountPath: /security
+      volumes:
+        - name: mutator-script
+          configMap:
+            name: sts-bond-mutator
+        - name: tls-certs
+          secret:
+            secretName: sts-bond-mutator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sts-bond-mutator
+  namespace: mongodb
+spec:
+  selector:
+    name: sts-bond-mutator
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 8443
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: sts-bond-mutator
+  namespace: mongodb
+webhooks:
+  - name: sts-bond-mutator.jalder.dev
+    failurePolicy: Ignore
+    sideEffects: None
+    timeoutSeconds: 5
+    admissionReviewVersions:
+      - "v1"
+      - "v1beta1"
+    namespaceSelector: {}
+    objectSelector:
+      matchLabels:
+        sts-bond: "true"
+    clientConfig:
+      service:
+        name: sts-bond-mutator
+        namespace: mongodb
+        path: "/mutate/sts-bond-distribution"
+        port: 443
+      caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUMrVENDQWVHZ0F3SUJBZ0lSQVB0WEN2c2ZqdnF0NnI3YTVpWlBIVVV3RFFZSktvWklodmNOQVFFTEJRQXcKRmpFVU1CSUdBMVVFQXhNTGFXNHRhRzkxYzJVdFkyRXdIaGNOTWpNd01UTXhNakl3TXpReFdoY05Namd3TVRNdwpNakl3TXpReFdqQVdNUlF3RWdZRFZRUURFd3RwYmkxb2IzVnpaUzFqWVRDQ0FTSXdEUVlKS29aSWh2Y05BUUVCCkJRQURnZ0VQQURDQ0FRb0NnZ0VCQU14K1UreEtvOXJIcGZmemMrTVJnYXhVV3lkWmp0cWtiUXRHaWx0NnNNYW0KS2VYdDlmSThKY1VlUnA3c3B5T0pKR0laQzNGVHA2bkFRT3ZVZmNiSTR6VEN6TWNsMVpkUDRoOGhMYS9IZVNHOQpOMERvN1pqZFNOZlNZR2NUd1NqTDN2WWxWZ2czTVk1NlExSFFlemVtMzRvMk5lNHcvZEFTUWNwV3NZK1lFOUd4CmJDM1R0L3AySTdWK1k2dVFSNDNsSDl2MlNqaUg2OGQ0SDl4bjR4aGRjcGR5clcyZDRmK1BvNUVTeHFGZGVpUFIKbE1vU3R3QnVQRWcyY1ZZWkt2QWR4ZkorODdxN3h6RXVGblhpNnlsK29OcU15dTlFelZMazgvS1JPY2E0S2V6bwplejBFVVhaK0lmYlI2dHpQclBMRWllSTZRNnQ2UHJPQk9xTEhHVmdPU05rQ0F3RUFBYU5DTUVBd0RnWURWUjBQCkFRSC9CQVFEQWdLa01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZNWnNSenl0Zm1KeTZxR0YKRmU3V2pxWUg2V0s0TUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFBT3R6a0gvWUJqVjRsUDNLMDNQR2hMVGFMOApvRHBGK1pSNSs1bGVOVDVoVm96RE9ySXBJelJ1NDBFVEZZalFPV2lkSFhWQi9vcnNTLytiY3Q1NXAxQkkyQkFLCkErdmR0ZFBTOG9FR3N3eklScDk3RFJqL3Q3WjZyK3NyNXQvTTd3dWpRMndyY295OHFwRUtYdGY1ZGphZmhIcU0KU2NMNU92MVQ4Nit2dGR3MzhBeGgwdEdzakROMW1UL2J1eWRhQ2xQUFF1RHJqT0pTV2tDMFNQa08zTGlTRmI2Qwp5M1hCMFhWTTVzRGtPZ3lhNFlCL2wxWGpDZzRWUUYyYnZXWC9BdndhMnBvb3J6MWhvRFg4KzY1M1liSEpqeEdQCkw5MmdnTHRDaVRmRDhpL2U0U3AvTHhncDJPc1hIV0l2alZrTHJVK1BGVTYxY0RWZk5OZmxPWmtWaFJpSgotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+    rules:
+      - apiGroups:
+          - "*"
+        resources:
+          - "pods"
+        apiVersions:
+          - "*"
+        operations:
+          - CREATE
+        scope: "*"
+        
+###Cert Authority
+#LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUQyakNDQXNLZ0F3SUJBZ0lVV2tLWFJVcVhaZTczd091MzM3NlVjMVg0N3RFd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZUXhJVEFmQmdOVkJBWVRHRlZ1YVhSbFpDQlRkR0YwWlhNZ2IyWWdRVzFsY21sallURVFNQTRHQTFVRQpDQk1IU1c1a2FXRnVZVEVTTUJBR0ExVUVCeE1KVEdGbVlYbGxkSFJsTVJBd0RnWURWUVFLRXdkTmIyNW5iMFJDCk1SSXdFQVlEVlFRTEV3bFVVMFVnUVd4a1pYSXhFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13SGhjTk1qRXcKTlRJMk1UZ3pPVEF3V2hjTk1qWXdOVEkxTVRnek9UQXdXakNCaERFaE1COEdBMVVFQmhNWVZXNXBkR1ZrSUZOMApZWFJsY3lCdlppQkJiV1Z5YVdOaE1SQXdEZ1lEVlFRSUV3ZEpibVJwWVc1aE1SSXdFQVlEVlFRSEV3bE1ZV1poCmVXVjBkR1V4RURBT0JnTlZCQW9UQjAxdmJtZHZSRUl4RWpBUUJnTlZCQXNUQ1ZSVFJTQkJiR1JsY2pFVE1CRUcKQTFVRUF4TUthM1ZpWlhKdVpYUmxjekNDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQgpBTXgrVSt4S285ckhwZmZ6YytNUmdheFVXeWRaanRxa2JRdEdpbHQ2c01hbUtlWHQ5Zkk4SmNVZVJwN3NweU9KCkpHSVpDM0ZUcDZuQVFPdlVmY2JJNHpUQ3pNY2wxWmRQNGg4aExhL0hlU0c5TjBEbzdaamRTTmZTWUdjVHdTakwKM3ZZbFZnZzNNWTU2UTFIUWV6ZW0zNG8yTmU0dy9kQVNRY3BXc1krWUU5R3hiQzNUdC9wMkk3VitZNnVRUjQzbApIOXYyU2ppSDY4ZDRIOXhuNHhoZGNwZHlyVzJkNGYrUG81RVN4cUZkZWlQUmxNb1N0d0J1UEVnMmNWWVpLdkFkCnhmSis4N3E3eHpFdUZuWGk2eWwrb05xTXl1OUV6VkxrOC9LUk9jYTRLZXpvZXowRVVYWitJZmJSNnR6UHJQTEUKaWVJNlE2dDZQck9CT3FMSEdWZ09TTmtDQXdFQUFhTkNNRUF3RGdZRFZSMFBBUUgvQkFRREFnRUdNQThHQTFVZApFd0VCL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRk1ac1J6eXRmbUp5NnFHRkZlN1dqcVlINldLNE1BMEdDU3FHClNJYjNEUUVCQ3dVQUE0SUJBUUNDNFZzQTdkQ3ljNDl5K2JsYVFsVlk5VVQ4S0kxazRQV0cxeXduUWVrY3ZEbDcKakFmOGtoU1pDSUxDT1FlOVhBZ3R0S3NnbXdENDhISTA1SnJPZzBOaXB3eHdGVHh4b2c3TlAzTTIzbGlYVys5ZApDNVJRazdabkxlaFVnYUdIUjdUTTdCK0NRRTZzdzFyRmJhbHFoL29UeU9xcFNIenZua0p5MkRwMVN3ems4eFJFCjA0THE1S0ZSeFFwOUZyZGpQdDhMdHhGYjNhdEFKTVkwTDRZcSs1NzNqMUttdU5PSHZURFBCV3hmK0sySXFrTGgKTkUrQXhQWGxHODhtZkJ5ZmFnQThtV09hRW5qNFNSSDNzaU5JMlRPK3pIWmpqam8yTitsOU5KeTNEb2JmMVBtaAp6ZDNyRERnWDE4ZHZnUUpzK2Y4UEJ0UFpxa0FEMVdmczRpaUJHbzJxCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
